@@ -167,7 +167,7 @@ index 00000000000..24f0b5311c7
 \ No newline at end of file
 diff --git a/configs/zynq_pynqz1_defconfig b/configs/zynq_pynqz1_defconfig
 new file mode 100644
-index 00000000000..e7b9e5c75bd
+index 00000000000..66358e31e17
 --- /dev/null
 +++ b/configs/zynq_pynqz1_defconfig
 @@ -0,0 +1,1866 @@
@@ -445,7 +445,7 @@ index 00000000000..e7b9e5c75bd
 +# CONFIG_TOOLS_DEBUG is not set
 +# CONFIG_PHYS_64BIT is not set
 +# CONFIG_FDT_64BIT is not set
-+# CONFIG_REMAKE_ELF is not set
++CONFIG_REMAKE_ELF=y
 +# CONFIG_HAS_BOARD_SIZE_LIMIT is not set
 +CONFIG_SYS_CUSTOM_LDSCRIPT=y
 +CONFIG_SYS_LDSCRIPT="arch/arm/mach-zynq/u-boot.lds"

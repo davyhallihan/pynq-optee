@@ -36,7 +36,7 @@ uboot: artifacts
 	export ARCH=arm && export DEVICE_TREE=$(DEVICE_TREE)  &&\
 	make -j8 -C uboot_src SHELL=/bin/bash
 
-	cd artifacts; rm u-boot.elf u-boot.bin -f; cp ../uboot_src/u-boot.bin . ; cp ../uboot_src/u-boot.elf .
+	cd artifacts; rm u-boot.elf -f; cp ../uboot_src/u-boot.elf .
 
 uboot_clean:
 	make -C uboot_src distclean SHELL=/bin/bash
