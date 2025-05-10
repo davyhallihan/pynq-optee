@@ -1,0 +1,4 @@
+#!/bin/sh 
+# very simple script for initializing the system
+
+mount -t devtmpfs none /dev

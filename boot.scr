@@ -1,1 +1,0 @@
-fatload mmc 0 0x1000000 image.ub && bootm 0x1000000

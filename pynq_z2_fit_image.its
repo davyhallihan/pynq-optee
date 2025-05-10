@@ -31,7 +31,7 @@
         
         ramdisk@0 {
             description = "Initial RAM disk";
-            data = /incbin/("./artifacts/rootfs.cpio.gz");
+            data = /incbin/("./artifacts/initramfs.cpio.gz");
             type = "ramdisk";
             arch = "arm";
             os = "linux";
@@ -47,6 +47,7 @@
             description = "Boot Linux kernel with FDT blob";
             kernel = "kernel@0";
             fdt = "fdt@0";
+            ramdisk = "ramdisk@0";
             hash@1 {
                 algo = "sha1";
             };

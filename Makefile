@@ -1,9 +1,6 @@
 # for uboot and linux kernel
 CROSS_COMPILE = arm-linux-gnueabihf-
 ARCH = arm
-# DEVICE_TREE = zynq-pynqz1
-# DEVICE_TREE = zynq-pynqz1
-# UBOOT_CONFIG = zynq_pynqz1_defconfig
 DEVICE_TREE = zynq-pynqz2
 UBOOT_CONFIG = zynq_pynqz2_defconfig
 export CROSS_COMPILE ARCH DEVICE_TREE
@@ -74,23 +71,19 @@ kernel: artifacts
 kernel_clean: 
 	cd linux-xlnx && make SHELL=/bin/bash clean
 
-# Create rootfs directories
-rootfs_dir: artifacts rootfs_clean
-	mkdir -p $(ROOTFS_DIR)
-	cd $(ROOTFS_DIR) && mkdir bin sbin etc proc sys usr/bin usr/sbin  dev home tmp -p 
-
-rootfs: rootfs_dir
+rootfs:
 	@if [ ! -d busybox ]; then git clone git://busybox.net/busybox.git ; fi
 	cp patches/busybox_simple_config busybox/configs/busybox_simple_defconfig
 	cd busybox && make SHELL=/bin/bash ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) busybox_simple_defconfig
 	cd busybox && make -j$(nproc) SHELL=/bin/bash ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE)
-	cd busybox && make  SHELL=/bin/bash ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) CONFIG_PREFIX=../$(ROOTFS_DIR) install
+	./make_rootfs.sh
+
 
 # sudo chown root:root ${ROOTFS_DIR}/bin/busybox
 # sudo chmod 4755 ${ROOTFS_DIR}/bin/busybox
 
-	cd $(ROOTFS_DIR) && find . | cpio -o --format=newc --owner=0:0 | gzip > ../rootfs.cpio.gz
-	mkimage -A $(ARCH) -O linux -T ramdisk -C gzip -n "Simple RootFS" -d artifacts/rootfs.cpio.gz artifacts/rootfs.cpio.gz.ub
+# cd $(ROOTFS_DIR) && find . | cpio -o --format=newc --owner=0:0 > ../rootfs.cpio
+# mkimage -A $(ARCH) -O linux -T ramdisk -C gzip -n "Simple RootFS" -d artifacts/rootfs.cpio.gz artifacts/rootfs.cpio.gz.ub
 
 rootfs_clean:
 	rm -rfv $(ROOTFS_DIR)
@@ -107,6 +100,10 @@ sdcard: rootfs bootgen
 
 ub_image: 
 	mkimage -f pynq_z2_fit_image.its ./artifacts/image.ub
+
+autoboot:
+	mkimage -A arm -T script -C none -n "Boot script" -d boot.cmd artifacts/boot.scr
+
 
 # clean: fsbl_clean uboot_clean rootfs_clean bootgen_clean dtb_clean
 # rm -rf artifacts

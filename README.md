@@ -191,7 +191,6 @@ Note: Make sure the kernel and root filesystem images are wrapped by with the U-
 ## Booting from SD Card
 For example, when booting from MMC devices (SD card or eMMC), the following script is run from the boot.scr file by default in the Xilinx-provided U-Boot environment.  This can be modified based on your needs. 
 
-
 ```c
 if test "${boot_target}" = "mmc0" || test "${boot_target}" = "mmc1" ; then
    if test -e ${devtype} ${devnum}:${distro_bootpart} /image.ub; then
@@ -215,29 +214,30 @@ if test "${boot_target}" = "mmc0" || test "${boot_target}" = "mmc1" ; then
 fi 
 ```
 
-
-Boot application images
-U-Boot provides bootm command to boot application images (i.e. Linux) which expects those images be wrapper with a U-Boot specific header using mkimage. This command can be used either to boot legacy U-Boot images or new multi component images (FIT) as documented in U-Boot images wiki page. The standard Linux build process builds the wrapper uImage and Petalinux projects generates by default the multi component FIT image as well.
-
 The following U-Boot commands illustrate loading a Linux image from a SD card using either individual images and a FIT image using the bootm command.
 ```bash
+setenv bootargs "earlyprintk console=ttyPS0,115200"
 u-boot> fatload mmc 0 0x3000000 uImage
 u-boot> fatload mmc 0 0x2A00000 devicetree.dtb
 u-boot> fatload mmc 0 0x2000000 uramdisk.image.gz
 u-boot> bootm 0x3000000 0x2000000 0x2A00000
 ```
-or 
+
+or if the FIT contains a initramfs image
 ```bash
+setenv bootargs "earlyprintk console=ttyPS0,115200"
 u-boot> fatload mmc 0 0x1000000 image.ub
 u-boot> bootm 0x1000000
 ```
 
+or if using a FIT but the rootfs is on the sdcard
+```bash
+setenv bootargs "earlyprintk console=ttyPS0,115200 root=/dev/mmcblk0p2 rw rootwait"
+setenv bootcmd 'fatload mmc 0 0x1000000 image.ub  && bootm 0x1000000'
+boot
+```
 
-```
-setenv bootargs "root=/dev/mmcblk0p2 rw rootwait" # od this if the rootfs is in you sdcard..... 
-setenv bootcmd "fatload mmc 0 0x1000000 image.ub && bootm 0x1000000"
-saveenv
-```
+
 
 With the bootm command, U-Boot is relocating the images before it boots Linux such that the addresses above may not be what the kernel sees. U-Boot also alters the device tree to tell the kernel where the ramdisk image is located in memory (initrd-start and initrd-end). The
 bootm command sets the r2 register to the address of the device tree in memory which is not done by the go command.
@@ -248,6 +248,8 @@ bootm - boot application image from memory
 
 ## Creating the SD card
 
+TODO
+
 ```
 sudo fdisk /dev/mmcblk0
 
@@ -255,33 +257,29 @@ sudo fdisk /dev/mmcblk0
 ```
 
 ## QEMU
-If you had U-Boot built for zynq_zc706:
+To test u-boot
 
 ```bash
 qemu-system-arm \
-  -M xilinx-zc706 \
+  -M xilinx-zynq-a9 \
   -m 1024M \
   -serial mon:stdio \
   -serial null \
-  -kernel u-boot.elf
+  -kernel artifacts/u-boot.elf 
+  -nographic
+  # -sd sdcardfile 
 ```
 
 Or to boot a Linux kernel:
 
 ```bash
 qemu-system-arm \
-  -M xilinx-zc706 \
-  -m 1024M \
+  -M xilinx-zynq-a9 \
+  -m 512M \
   -serial mon:stdio \
-  -kernel uImage \
-  -dtb devicetree.dtb \
-  -initrd rootfs.cpio.gz \
+  -kernel artifacts/uImage \
+  -initrd artifacts/initramfs.cpio.gz \
+  -dtb artifacts/system.dtb \
   -append "console=ttyPS0,115200 earlyprintk"
+  -nographic
 ```
-
-
-## Linux kernel build config:
-# Yocto KERNEL Variables
-UBOOT_ENTRYPOINT  ?= "0x200000"
-UBOOT_LOADADDRESS ?= "0x200000"
-KERNEL_EXTRA_ARGS += "UIMAGE_LOADADDR=${UBOOT_ENTRYPOINT}"
