@@ -80,29 +80,22 @@ rootfs:
 	cd busybox && make -j$(nproc) SHELL=/bin/bash ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE)
 	./make_rootfs.sh
 
-
-# sudo chown root:root ${ROOTFS_DIR}/bin/busybox
-# sudo chmod 4755 ${ROOTFS_DIR}/bin/busybox
-
-# cd $(ROOTFS_DIR) && find . | cpio -o --format=newc --owner=0:0 > ../rootfs.cpio
-# mkimage -A $(ARCH) -O linux -T ramdisk -C gzip -n "Simple RootFS" -d artifacts/rootfs.cpio.gz artifacts/rootfs.cpio.gz.ub
-
 rootfs_clean:
 	rm -rfv $(ROOTFS_DIR)
 
-# bootgen: artifacts fsbl uboot
+# bootgen: artifacts fsbl uboot dtb
 bootgen: 
+	cp device-tree/simple_pynqz2_wrapper.bit artifacts/bitstream.bit
 	export PATH=${PATH}:/home/zaki/tools/Xilinx/Vitis/2024.2/bin/ && bootgen -image image.bif -o artifacts/BOOT.bin -w
 
 bootgen_clean:
 	rm -f artifacts/BOOT.bin 
 
-sdcard: rootfs bootgen
-	echo "TODO"
-
-ub_image: 
+image_ub: 
 	mkimage -f pynq_z2_fit_image.its ./artifacts/image.ub
 
+sdcard: rootfs bootgen
+	echo "TODO"
 
 
 # clean: fsbl_clean uboot_clean rootfs_clean bootgen_clean dtb_clean

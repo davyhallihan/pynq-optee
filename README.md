@@ -1,12 +1,29 @@
+# TODO:
+- you should checkout https://github.com/Xilinx/bootgen
+- you can build bootgen locally to avoid having it as an external user dependency
+
+# Building and booting linux from scratch on Pynq-z2
+
+## Learning objectives 
+- Learn about the xilinx zynq 7000 SoC boot process
+- patch, configure and compile:
+  - Xilinx first stage boot loader (FSBL)
+  - U-boot 
+  - Linux kernel 
+  - Device tree for pynq-z2
+  - busybox
+  - create a simple initramfs
+- Create a bootable image for zynq 7000 SoC/pynq-z2 board which gives access to u-boot
+- use u-boot to load linux kernel, device tree and rootfs and boot to linux 
+- simple statup script to get a operation linux os.
 
 ## General steps for booting linux from scratch
--  Fetch sources
 -  Build FSBL
 -  Build U-boot 
 -  Build and modify a root filesystem
 -  Build a device tree blob
 -  Build the linux kernel
--  Create a boot image using bootgen or mkboot 
+-  Create a boot image using bootgen or zynq-mkbootimage (opensource from antmicro) 
 -  Prepare the boot medium. In my case SDCARD with FAT32 fs and copy the files into it
 
 
@@ -150,6 +167,8 @@ The previous steps are summarized in `patches/add-pynq-z1-and-z2-support-uboot.p
 
 
 ### Creating the SD card
+
+https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842385/How+to+format+SD+card+for+SD+boot
 
 TODO
 
