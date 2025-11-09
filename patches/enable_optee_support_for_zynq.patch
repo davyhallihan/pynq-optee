@@ -1,0 +1,222 @@
+diff --git a/arch/arm/mach-zynq/Kconfig b/arch/arm/mach-zynq/Kconfig
+index 05be5aa9b402..ce4d31322622 100644
+--- a/arch/arm/mach-zynq/Kconfig
++++ b/arch/arm/mach-zynq/Kconfig
+@@ -12,6 +12,7 @@ config ARCH_ZYNQ
+ 	select MFD_SYSCON
+ 	select PINCTRL
+ 	select PINCTRL_ZYNQ
++	select HAVE_ARM_SMCCC
+ 	select SOC_BUS
+ 	help
+ 	  Support for Xilinx Zynq ARM Cortex A9 Platform
+diff --git a/arch/arm/mach-zynq/common.c b/arch/arm/mach-zynq/common.c
+index ed82f6eb2577..58a5d6572084 100644
+--- a/arch/arm/mach-zynq/common.c
++++ b/arch/arm/mach-zynq/common.c
+@@ -36,11 +36,27 @@
+ #include <asm/hardware/cache-l2x0.h>
+ 
+ #include "common.h"
++#include "debug.h"
+ 
+ #define ZYNQ_DEVCFG_MCTRL		0x80
+ #define ZYNQ_DEVCFG_PS_VERSION_SHIFT	28
+ #define ZYNQ_DEVCFG_PS_VERSION_MASK	0xF
+ 
++static void __iomem *uart_virtual_addr = NULL;
++
++// Best debugging utility :)
++void uart_putc(char chr)
++{
++	if (!uart_virtual_addr)
++	uart_virtual_addr = ioremap(0xE0000000, 0x1000);
++    
++    if (uart_virtual_addr) {
++		writeb(chr, uart_virtual_addr+ 0x30);
++        writeb('\r', uart_virtual_addr+ 0x30);
++        writeb('\n', uart_virtual_addr+ 0x30);
++	}
++}
++
+ void __iomem *zynq_scu_base;
+ 
+ /**
+@@ -94,8 +110,8 @@ static int __init zynq_get_revision(void)
+ 
+ static void __init zynq_init_late(void)
+ {
+-	zynq_core_pm_init();
+-	zynq_pm_late_init();
++	// zynq_core_pm_init(); // TODO: should we do this in OPTEE ? OR offer a service that does this ?
++	// zynq_pm_late_init(); // TODO: should we do this in OPTEE ? OR offer a service that does this ?
+ }
+ 
+ /**
+@@ -107,18 +123,18 @@ static void __init zynq_init_machine(void)
+ 	struct soc_device_attribute *soc_dev_attr;
+ 	struct soc_device *soc_dev;
+ 	struct device *parent = NULL;
+-
++	
+ 	soc_dev_attr = kzalloc(sizeof(*soc_dev_attr), GFP_KERNEL);
+ 	if (!soc_dev_attr)
+-		goto out;
+-
++	goto out;
++	
+ 	system_rev = zynq_get_revision();
+-
++	
+ 	soc_dev_attr->family = kasprintf(GFP_KERNEL, "Xilinx Zynq");
+ 	soc_dev_attr->revision = kasprintf(GFP_KERNEL, "0x%x", system_rev);
+-	soc_dev_attr->soc_id = kasprintf(GFP_KERNEL, "0x%x",
+-					 zynq_slcr_get_device_id());
+-
++	soc_dev_attr->soc_id = kasprintf(GFP_KERNEL, "0x0372A093"); // TODO: read the correct value from optee and put here
++	// soc_dev_attr->soc_id = kasprintf(GFP_KERNEL, "0x%x",zynq_slcr_get_device_id());
++		
+ 	soc_dev = soc_device_register(soc_dev_attr);
+ 	if (IS_ERR(soc_dev)) {
+ 		kfree(soc_dev_attr->family);
+@@ -127,14 +143,14 @@ static void __init zynq_init_machine(void)
+ 		kfree(soc_dev_attr);
+ 		goto out;
+ 	}
+-
++	
+ 	parent = soc_device_to_device(soc_dev);
+-
+-out:
++	
++	out:
+ 	/*
+-	 * Finished with the static registrations now; fill in the missing
+-	 * devices
+-	 */
++	* Finished with the static registrations now; fill in the missing
++	* devices
++	*/
+ 	of_platform_default_populate(NULL, NULL, parent);
+ 
+ 	platform_device_register(&zynq_cpuidle_device);
+@@ -187,7 +203,7 @@ static const char * const zynq_dt_match[] = {
+ };
+ 
+ DT_MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
+-	/* 64KB way size, 8-way associativity, parity disabled */
++	/* 64KB way size, 8-way associativity, parity disabled */ //TODO:  in need to look into this config as well....
+ 	.l2c_aux_val    = 0x00400000,
+ 	.l2c_aux_mask	= 0xffbfffff,
+ 	.smp		= smp_ops(zynq_smp_ops),
+diff --git a/arch/arm/mach-zynq/debug.h b/arch/arm/mach-zynq/debug.h
+new file mode 100644
+index 000000000000..77faab261e21
+--- /dev/null
++++ b/arch/arm/mach-zynq/debug.h
+@@ -0,0 +1,6 @@
++#ifndef __DEBUG_MY_KERNEL__
++#define __DEBUG_MY_KERNEL__
++
++void uart_putc(char chr);
++
++#endif
+\ No newline at end of file
+diff --git a/arch/arm/mach-zynq/platsmp.c b/arch/arm/mach-zynq/platsmp.c
+index 10ca6e0868ac..a8f07fdf3869 100644
+--- a/arch/arm/mach-zynq/platsmp.c
++++ b/arch/arm/mach-zynq/platsmp.c
+@@ -19,6 +19,7 @@
+ #include <asm/smp_scu.h>
+ #include <linux/irqchip/arm-gic.h>
+ #include "common.h"
++#include "debug.h"
+ 
+ /*
+  * Store number of cores in the system
+@@ -83,10 +84,11 @@ EXPORT_SYMBOL(zynq_cpun_start);
+ 
+ static int zynq_boot_secondary(unsigned int cpu, struct task_struct *idle)
+ {
+-	if (!zynq_efuse_cpu_state(cpu))
+-		return -1;
++	// if (!zynq_efuse_cpu_state(cpu))
++	// 	return -1;
+ 
+-	return zynq_cpun_start(__pa_symbol(secondary_startup_arm), cpu);
++	// return zynq_cpun_start(__pa_symbol(secondary_startup_arm), cpu);
++	return 0;
+ }
+ 
+ /*
+@@ -96,16 +98,16 @@ static int zynq_boot_secondary(unsigned int cpu, struct task_struct *idle)
+ static void __init zynq_smp_init_cpus(void)
+ {
+ 	int i;
+-
++	
+ 	ncores = scu_get_core_count(zynq_scu_base);
+-
++	
+ 	for (i = 0; i < ncores && i < CONFIG_NR_CPUS; i++)
+ 		set_cpu_possible(i, true);
+ }
+ 
+ static void __init zynq_smp_prepare_cpus(unsigned int max_cpus)
+ {
+-	scu_enable(zynq_scu_base);
++	// scu_enable(zynq_scu_base);
+ }
+ 
+ /**
+diff --git a/arch/arm/mach-zynq/slcr.c b/arch/arm/mach-zynq/slcr.c
+index c517cd4a7737..dde92d176852 100644
+--- a/arch/arm/mach-zynq/slcr.c
++++ b/arch/arm/mach-zynq/slcr.c
+@@ -109,10 +109,10 @@ int zynq_slcr_system_restart(struct notifier_block *nb,
+ 	return 0;
+ }
+ 
+-static struct notifier_block zynq_slcr_restart_nb = {
+-	.notifier_call	= zynq_slcr_system_restart,
+-	.priority	= 192,
+-};
++// static struct notifier_block zynq_slcr_restart_nb = {
++// 	.notifier_call	= zynq_slcr_system_restart,
++// 	.priority	= 192,
++// };
+ 
+ /**
+  * zynq_slcr_cpu_start - Start cpu
+@@ -216,13 +216,13 @@ int __init zynq_early_slcr_init(void)
+ 		return -ENODEV;
+ 	}
+ 
+-	/* unlock the SLCR so that registers can be changed */
+-	zynq_slcr_unlock();
++	// /* unlock the SLCR so that registers can be changed */
++	// zynq_slcr_unlock();
+ 
+-	/* See AR#54190 design advisory */
+-	regmap_update_bits(zynq_slcr_regmap, SLCR_L2C_RAM, 0x70707, 0x20202);
++	// /* See AR#54190 design advisory */
++	// regmap_update_bits(zynq_slcr_regmap, SLCR_L2C_RAM, 0x70707, 0x20202); // TODO: should we do this in OPTEE? is it already done ?
+ 
+-	register_restart_handler(&zynq_slcr_restart_nb);
++	// register_restart_handler(&zynq_slcr_restart_nb); // TODO: this should be replaced with a callback that calls an OPTEE service for rebooting the device
+ 
+ 	pr_info("%pOFn mapped to %p\n", np, zynq_slcr_base);
+ 
+diff --git a/drivers/clk/zynq/clkc.c b/drivers/clk/zynq/clkc.c
+index 7bdeaff2bfd6..df74523c3bce 100644
+--- a/drivers/clk/zynq/clkc.c
++++ b/drivers/clk/zynq/clkc.c
+@@ -585,7 +585,7 @@ void __init zynq_clock_init(void)
+ 	np = of_find_compatible_node(NULL, NULL, "xlnx,ps7-clkc");
+ 	if (!np) {
+ 		pr_err("%s: clkc node not found\n", __func__);
+-		goto np_err;
++		return; // do not error here ...
+ 	}
+ 
+ 	if (of_address_to_resource(np, 0, &res)) {

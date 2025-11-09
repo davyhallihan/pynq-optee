@@ -12,4 +12,5 @@ chmod a+x ${INITRAMFS_DIR}/etc/init.d/rcS
 cd $INITRAMFS_DIR
 ln -s bin/busybox init
 find . | cpio -o -H newc --owner=0:0 | gzip  > ../initramfs.cpio.gz
+mkimage -A arm -O linux -T ramdisk -C gzip -d ../initramfs.cpio.gz ../uInitrd
 cd -

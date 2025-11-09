@@ -2,3 +2,5 @@
 # very simple script for initializing the system
 
 mount -t devtmpfs none /dev
+mount -t sysfs sysfs /sys
+mount -t debugfs none /sys/kernel/debug

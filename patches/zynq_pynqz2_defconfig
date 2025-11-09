@@ -155,10 +155,13 @@ CONFIG_SYS_PROMPT="ZynqZmdev> "
 
 CONFIG_BOOTDELAY=3
 CONFIG_USE_BOOTARGS=y
-CONFIG_BOOTARGS="earlyprintk console=ttyPS0,115200"
+CONFIG_BOOTARGS="earlycon console=ttyPS0,115200"
+# Enable this instead for debugging the kernel boot
+# CONFIG_BOOTARGS="earlycon console=ttyPS0,115200 debug initcall_debug ignore_loglevel log_buf_len=1M printk.time=1"
 CONFIG_USE_BOOTCOMMAND=y
+CONFIG_BOOTCOMMAND="source 0x02000000"
 # by defaut expect that there will be a image.ub, if so, load it at 0x1000000 
-CONFIG_BOOTCOMMAND="fatload mmc 0 0x1000000 image.ub  && bootm 0x1000000 || run distro_bootcmd"
+# CONFIG_BOOTCOMMAND="fatload mmc 0 0x1000000 image.ub  && bootm 0x1000000 || run distro_bootcmd"
 # CONFIG_USE_PREBOOT is not set
 
 CONFIG_CMD_SF=y

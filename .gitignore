@@ -12,3 +12,5 @@ uboot_src
 uboot_src/*
 busybox/
 busybox/*
+optee_os
+optee_os/*

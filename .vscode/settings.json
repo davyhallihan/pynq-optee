@@ -1,0 +1,25 @@
+{
+    "files.associations": {
+        "optee.h": "c",
+        "random": "c",
+        "typeinfo": "c",
+        "platform_config.h": "c",
+        "arm32.h": "c",
+        "xil_mmu.h": "c",
+        "arm.h": "c",
+        "generic_ram_layout.h": "c",
+        "serial.h": "c",
+        "*.conf": "bitbake",
+        "*.inc": "bitbake",
+        "common.h": "c"
+    },
+    "python.autoComplete.extraPaths": [
+        "${workspaceFolder}/sources/poky/bitbake/lib",
+        "${workspaceFolder}/sources/poky/meta/lib"
+    ],
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/sources/poky/bitbake/lib",
+        "${workspaceFolder}/sources/poky/meta/lib"
+    ],
+    "C_Cpp.errorSquiggles": "disabled"
+}

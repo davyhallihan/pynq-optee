@@ -1,0 +1,207 @@
+diff --git a/core/arch/arm/plat-zynq7k/main.c b/core/arch/arm/plat-zynq7k/main.c
+index 5f71a05f2..a51635dea 100644
+--- a/core/arch/arm/plat-zynq7k/main.c
++++ b/core/arch/arm/plat-zynq7k/main.c
+@@ -52,6 +52,19 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC, GIC_BASE, CORE_MMU_PGDIR_SIZE);
+ register_phys_mem_pgdir(MEM_AREA_IO_SEC, PL310_BASE, CORE_MMU_PGDIR_SIZE);
+ register_phys_mem_pgdir(MEM_AREA_IO_SEC, SLCR_BASE, CORE_MMU_PGDIR_SIZE);
+ 
++// register the ocm memory range used for communication between both cpus
++#define OCM3_START_ADDR      0xFFFF0000
++#define OCM3_SIZE            0x00010000 // 64KB 
++register_phys_mem(
++    MEM_AREA_IO_NSEC,    
++    // MEM_AREA_IO_SEC,    
++    OCM3_START_ADDR,     
++    OCM3_SIZE            
++);
++
++// register non-secure RAM range
++register_ddr(0x00100000, 0x1FFFFFFF);
++
+ void plat_primary_init_early(void)
+ {
+ 	/* primary core */
+@@ -68,16 +81,24 @@ void plat_primary_init_early(void)
+ 	io_write32(SCU_BASE + SCU_NSAC, SCU_NSAC_CTRL_INIT);
+ 
+ 	/* SCU enable */
+-	io_setbits32(SCU_BASE + SCU_CTRL, 0x1);
++	io_setbits32(SCU_BASE + SCU_CTRL, 0x1); // enable the unit responsible for cache coherency between the cores
+ 
+ 	/* NS Access control */
+ 	io_write32(SECURITY2_SDIO0, ACCESS_BITS_ALL);
+ 	io_write32(SECURITY3_SDIO1, ACCESS_BITS_ALL);
+ 	io_write32(SECURITY4_QSPI, ACCESS_BITS_ALL);
+ 	io_write32(SECURITY6_APB_SLAVES, ACCESS_BITS_ALL);
+-
++	io_write32(SECURITY7_SMC, ACCESS_BITS_ALL); // new
++	
+ 	io_write32(SLCR_UNLOCK, SLCR_UNLOCK_MAGIC);
+-
++	
++	// io_write32(SECURITY_APB, ACCESS_BITS_ALL); // new
++	// io_write32(SLCR_DMAC_RST_CTRL, ACCESS_BITS_ALL); // new
++	io_write32(SLCR_TZ_OCM, ACCESS_BITS_ALL); // new
++	io_write32(SLCR_TZ_FPGA_M, 0x00000000); // new
++	io_write32(SLCR_TZ_FPGA_AFI, 0x00000000); // new
++	io_write32(SLCR_TZ_OCM_RAM1, ACCESS_BITS_ALL); // new
++	io_write32(SLCR_TZ_OCM_RAM0, ACCESS_BITS_ALL); // new
+ 	io_write32(SLCR_TZ_DDR_RAM, ACCESS_BITS_ALL);
+ 	io_write32(SLCR_TZ_DMA_NS, ACCESS_BITS_ALL);
+ 	io_write32(SLCR_TZ_DMA_IRQ_NS, ACCESS_BITS_ALL);
+diff --git a/core/arch/arm/plat-zynq7k/platform_config.h b/core/arch/arm/plat-zynq7k/platform_config.h
+index 41a48880f..a17edf9bc 100644
+--- a/core/arch/arm/plat-zynq7k/platform_config.h
++++ b/core/arch/arm/plat-zynq7k/platform_config.h
+@@ -44,6 +44,15 @@
+ #define SLCR_BASE			0xF8000000
+ #define SLCR_LOCK			0xF8000004
+ #define SLCR_UNLOCK			0xF8000008
++
++#define SLCR_DMAC_RST_CTRL   0xF800020C
++#define SLCR_TZ_OCM_RAM0     0xF8000400
++#define SLCR_TZ_OCM_RAM1     0xF8000404
++#define SLCR_TZ_OCM          0xF8000408
++#define SLCR_TZ_FPGA_M       0xF8000484
++#define SLCR_TZ_FPGA_AFI     0xF8000488
++#define APU_DBG_CTRL    0xF8007000
++
+ #define SLCR_TZ_DDR_RAM			0xF8000430
+ #define SLCR_TZ_DMA_NS			0xF8000440
+ #define SLCR_TZ_DMA_IRQ_NS		0xF8000444
+@@ -59,14 +68,16 @@
+ #define SECURITY2_SDIO0			0xE0200008
+ #define SECURITY3_SDIO1			0xE020000C
+ #define SECURITY4_QSPI			0xE0200010
+-#define SECURITY6_APB_SLAVES		0xE0200018
++#define SECURITY6_APB_SLAVES    0xE0200018
++#define SECURITY7_SMC           0xE020001C
++#define SECURITY_APB          0xF8900028
+ 
+ #define UART0_BASE			0xE0000000
+ #define UART1_BASE			0xE0001000
+ 
+-#define CONSOLE_UART_BASE		UART1_BASE
++#define CONSOLE_UART_BASE		UART0_BASE
+ 
+-#define TEE_RAM_VA_SIZE			(1024 * 1024)
++// #define TEE_RAM_VA_SIZE			(1024 * 1024)
+ 
+ /*
+  * PL310 TAG RAM Control Register
+@@ -161,56 +172,6 @@
+ 
+ /* define the memory areas */
+ 
+-#ifdef CFG_WITH_PAGER
+-
+-/*
+- * TEE/TZ RAM layout:
+- *
+- *  +---------------------------------------+  <- CFG_CORE_TZSRAM_EMUL_START
+- *  | TEE private highly | TEE_RAM          |   ^
+- *  |   secure memory    |                  |   | CFG_CORE_TZSRAM_EMUL_SIZE
+- *  +---------------------------------------+   v
+- *
+- *  +---------------------------------------+  <- TZDRAM_BASE
+- *  | TEE private secure |  TA_RAM          |   ^  + TZDRAM_SIZE
+- *  |   external memory  |                  |   v
+- *  +---------------------------------------+  <- TEE_SHMEM_START
+- *  |     Non secure     |  SHM             |   |
+- *  |   shared memory    |                  |   |  + TEE_SHMEM_SIZE
+- *  +---------------------------------------+   v
+- *
+- *  TEE_RAM : default 256kByte
+- *  TA_RAM  : all what is left in DDR TEE reserved area
+- *  PUB_RAM : default 2MByte
+- */
+-
+-/* emulated SRAM, 256K at start of secure DDR */
+-
+-#define TZSRAM_BASE			0x3E000000
+-#define TZSRAM_SIZE			CFG_CORE_TZSRAM_EMUL_SIZE
+-
+-/* Location of trusted dram */
+-
+-#define TEE_RAM_START			TZSRAM_BASE
+-#define TEE_RAM_PH_SIZE			TZSRAM_SIZE
+-
+-#define TZDRAM_BASE			0x3e100000
+-#define TZDRAM_SIZE			0x01e00000
+-
+-#define TEE_SHMEM_START			0x3ff00000
+-#define TEE_SHMEM_SIZE			0x00100000
+-
+-#define TA_RAM_START			TZDRAM_BASE
+-#define TA_RAM_SIZE			TZDRAM_SIZE
+-
+-#ifdef CFG_TEE_LOAD_ADDR
+-#define TEE_LOAD_ADDR			CFG_TEE_LOAD_ADDR
+-#else
+-#define TEE_LOAD_ADDR			TEE_RAM_START
+-#endif
+-
+-#else /* CFG_WITH_PAGER */
+-
+ /*
+  * TEE/TZ RAM layout:
+  *
+@@ -228,17 +189,20 @@
+  *  TA_RAM  : all what is left (at least 2MByte !)
+  */
+ 
+-#define TZDRAM_BASE			0x3E000000
+-#define TZDRAM_SIZE			(0x02000000 - TEE_SHMEM_SIZE)
++#define TZDRAM_BASE			0x10000000
++#define TZDRAM_SIZE			(32 * 1024 * 1024) // 32MB
++#define CFG_TZDRAM_START    TZDRAM_BASE    
++#define CFG_TZDRAM_SIZE     TZDRAM_SIZE
+ 
+ #define TEE_RAM_START			TZDRAM_BASE
+-#define TEE_RAM_PH_SIZE			(1 * 1024 * 1024)
++#define TEE_RAM_PH_SIZE         TEE_RAM_VA_SIZE
++#define TEE_RAM_VA_SIZE             (4 * 1024 * 1024)
+ 
+ #define TA_RAM_START			(TZDRAM_BASE + TEE_RAM_PH_SIZE)
+ #define TA_RAM_SIZE			(TZDRAM_SIZE - TEE_RAM_PH_SIZE)
+ 
+ #define TEE_SHMEM_START			(TZDRAM_BASE + TZDRAM_SIZE)
+-#define TEE_SHMEM_SIZE			0x00100000
++#define TEE_SHMEM_SIZE			0x00100000 // 1MB
+ 
+ #ifdef CFG_TEE_LOAD_ADDR
+ #define TEE_LOAD_ADDR			CFG_TEE_LOAD_ADDR
+@@ -246,6 +210,5 @@
+ #define TEE_LOAD_ADDR			TEE_RAM_START
+ #endif
+ 
+-#endif /* CFG_WITH_PAGER */
+ 
+ #endif /*PLATFORM_CONFIG_H*/
+diff --git a/core/include/kernel/misc.h b/core/include/kernel/misc.h
+index d204a3ae7..1c033a405 100644
+--- a/core/include/kernel/misc.h
++++ b/core/include/kernel/misc.h
+@@ -19,7 +19,7 @@ static inline size_t __noprof get_core_pos(void)
+ 	 * Foreign interrupts must be disabled before playing with current
+ 	 * core since we otherwise may be rescheduled to a different core.
+ 	 */
+-	assert(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
++	// assert(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
+ 	return __get_core_pos();
+ }
+ 
+diff --git a/core/kernel/thread.c b/core/kernel/thread.c
+index 2dbcbf3af..9ad57ef6d 100644
+--- a/core/kernel/thread.c
++++ b/core/kernel/thread.c
+@@ -260,7 +260,7 @@ get_core_local(unsigned int pos)
+ 	 * since we otherwise may be rescheduled to a different core in the
+ 	 * middle of this function.
+ 	 */
+-	assert(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
++	// assert(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
+ 
+ 	/*
+ 	 * We boot on a single core and have allocated only one struct

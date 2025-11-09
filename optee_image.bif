@@ -3,7 +3,8 @@ my_image:
   [bootloader]artifacts/fsbl.elf
   artifacts/bitstream.bit
   [load=0x04000000, startup=0x04000000] artifacts/u-boot.bin
-  [load=0x02000000] artifacts/boot.scr
+  [load=0x02000000] artifacts/boot_tee.scr
+  [load=0x10000000] artifacts/uTee
   [load=0x03000000] artifacts/zImage
   [load=0x02A00000] artifacts/system.dtb
   [load=0x05000000] artifacts/uInitrd
