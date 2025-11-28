@@ -25,4 +25,6 @@ gnu/*
 bootgen
 bootgen/*
 device-tree/dts/*
+gcc-arm-10.3-2021.07-x86_64-arm-none-linux-gnueabihf/*
+*/**/.gitignore
 todo.md
