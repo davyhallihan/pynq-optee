@@ -129,6 +129,15 @@ optee_examples:
 	mkdir -p artifacts/initramfs/lib/optee_armtz && cp optee_examples/out/ta/* artifacts/initramfs/lib/optee_armtz/
 	mkdir -p artifacts/initramfs/lib/optee_armtz/plugins && cp optee_examples/out/plugins/* artifacts/initramfs/lib/optee_armtz/plugins/
 
+secure_switch: gnu_toolchain
+	make -C secure_switch \
+		CROSS_COMPILE=arm-none-linux-gnueabihf- \
+		TEEC_EXPORT=$(realpath artifacts/initramfs) \
+		TA_DEV_KIT_DIR=$(realpath optee_os/out/arm/export-ta_arm32)
+	cp secure_switch/host/optee_benchmark_switch artifacts/initramfs/usr/bin/
+	mkdir -p artifacts/initramfs/lib/optee_armtz
+	cp secure_switch/ta/*.ta artifacts/initramfs/lib/optee_armtz/
+
 busybox: gnu_toolchain
 	@if [ ! -d busybox ]; then git clone git://busybox.net/busybox.git ; fi
 	cp patches/busybox_simple_config busybox/configs/busybox_simple_defconfig
@@ -153,6 +162,7 @@ rootfs_optee:
 	make busybox
 	make optee_client
 	make optee_examples
+	make secure_switch
 	./make_initramfs.sh
 
 bootgen_bin:
@@ -204,4 +214,4 @@ optee_image: fsbl uboot boot_tee_src optee dtb_optee kernel_tee rootfs_optee boo
 clean: fsbl_clean uboot_clean kernel_clean dtb_clean optee_clean
 	rm -rf artifacts
 	
-.PHONY: fsbl fsbl_clean uboot uboot_clean kernel kernel_clean rootfs bootgen clean ub_image dtb dtb_optee dtc optee_image kernel_tee boot_src boot_tee_src simple_image optee_client busybox optee_examples glibc gnu_toolchain rootfs_optee optee_clean bootgen_bin
+.PHONY: fsbl fsbl_clean uboot uboot_clean kernel kernel_clean rootfs bootgen clean ub_image dtb dtb_optee dtc optee_image kernel_tee boot_src boot_tee_src simple_image optee_client busybox optee_examples secure_switch glibc gnu_toolchain rootfs_optee optee_clean bootgen_bin
