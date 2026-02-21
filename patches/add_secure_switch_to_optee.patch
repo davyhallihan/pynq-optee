@@ -1,0 +1,22 @@
+--- a/core/arch/arm/plat-zynq7k/platform_config.h
++++ b/core/arch/arm/plat-zynq7k/platform_config.h
+@@ -68,6 +68,10 @@
+ #define APU_DBG_CTRL    0xF8007000
+ 
++/* Secure AXI switch reader peripheral in PL (address from Vivado) */
++#define SECURE_SWITCH_BASE    0x43C00000
++#define SECURE_SWITCH_SIZE    0x00001000  /* 4KB */
++
+ #define SLCR_TZ_DDR_RAM			0xF8000430
+ #define SLCR_TZ_DMA_NS			0xF8000440
+--- a/core/arch/arm/plat-zynq7k/main.c
++++ b/core/arch/arm/plat-zynq7k/main.c
+@@ -52,6 +52,9 @@
+ register_phys_mem_pgdir(MEM_AREA_IO_SEC, PL310_BASE, CORE_MMU_PGDIR_SIZE);
+ register_phys_mem_pgdir(MEM_AREA_IO_SEC, SLCR_BASE, CORE_MMU_PGDIR_SIZE);
+ 
++/* Map the secure AXI switch peripheral so TAs can access it */
++register_phys_mem(MEM_AREA_IO_SEC, SECURE_SWITCH_BASE, SECURE_SWITCH_SIZE);
++
+ // register the ocm memory range used for communication between both cpus
+ #define OCM3_START_ADDR      0xFFFF0000
