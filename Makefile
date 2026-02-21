@@ -14,7 +14,7 @@ FSBL_CC=arm-none-eabi-gcc
 
 # ---- Pinned dependency versions (commit SHAs) ----
 # Update these when upgrading dependencies or regenerating patches.
-EMBEDDEDSW_SHA    = 45a18907084e77bb3a450a035d280130d7ff6e26
+EMBEDDEDSW_SHA    = 1bb19ac1ab06ab322ba4340bed372f93ca612a18
 UBOOT_BRANCH      = xilinx-v2024.2
 DTC_SHA            = 7f3184a6c550bb8fb59e93c9901d75dced889dcf
 LINUX_SHA          = 7e47ae4ab22ed45a8326203c863f826423978f89
@@ -190,7 +190,7 @@ bootgen_optee: bootgen_bin
 
 optee:
 	@if [ ! -d optee_os ]; then git clone https://github.com/OP-TEE/optee_os.git && cd optee_os && git checkout $(OPTEE_OS_SHA); fi
-	cd optee_os; git reset && git restore . && git clean -f && git apply ../patches/fix_zynq_support_in_optee.patch && git apply ../patches/add_secure_switch_to_optee.patch
+	cd optee_os; git reset && git restore . && git clean -f && git apply ../patches/fix_zynq_support_in_optee.patch
 	cd optee_os; make \
 		CFG_NS_ENTRY_ADDR=0x03000000 \
 		CFG_TEE_CORE_LOG_LEVEL=4 \

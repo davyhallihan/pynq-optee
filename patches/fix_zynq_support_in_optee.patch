@@ -1,11 +1,14 @@
 diff --git a/core/arch/arm/plat-zynq7k/main.c b/core/arch/arm/plat-zynq7k/main.c
-index 5f71a05f2..a51635dea 100644
+index 5f71a05f2..6c21e46ae 100644
 --- a/core/arch/arm/plat-zynq7k/main.c
 +++ b/core/arch/arm/plat-zynq7k/main.c
-@@ -52,6 +52,19 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC, GIC_BASE, CORE_MMU_PGDIR_SIZE);
+@@ -52,6 +52,22 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC, GIC_BASE, CORE_MMU_PGDIR_SIZE);
  register_phys_mem_pgdir(MEM_AREA_IO_SEC, PL310_BASE, CORE_MMU_PGDIR_SIZE);
  register_phys_mem_pgdir(MEM_AREA_IO_SEC, SLCR_BASE, CORE_MMU_PGDIR_SIZE);
  
++/* Map the secure AXI switch peripheral so TAs can access it */
++register_phys_mem(MEM_AREA_IO_SEC, SECURE_SWITCH_BASE, SECURE_SWITCH_SIZE);
++
 +// register the ocm memory range used for communication between both cpus
 +#define OCM3_START_ADDR      0xFFFF0000
 +#define OCM3_SIZE            0x00010000 // 64KB 
@@ -22,7 +25,7 @@ index 5f71a05f2..a51635dea 100644
  void plat_primary_init_early(void)
  {
  	/* primary core */
-@@ -68,16 +81,24 @@ void plat_primary_init_early(void)
+@@ -68,16 +84,24 @@ void plat_primary_init_early(void)
  	io_write32(SCU_BASE + SCU_NSAC, SCU_NSAC_CTRL_INIT);
  
  	/* SCU enable */
@@ -51,10 +54,10 @@ index 5f71a05f2..a51635dea 100644
  	io_write32(SLCR_TZ_DMA_NS, ACCESS_BITS_ALL);
  	io_write32(SLCR_TZ_DMA_IRQ_NS, ACCESS_BITS_ALL);
 diff --git a/core/arch/arm/plat-zynq7k/platform_config.h b/core/arch/arm/plat-zynq7k/platform_config.h
-index 41a48880f..a17edf9bc 100644
+index 41a48880f..e2fcc8cf7 100644
 --- a/core/arch/arm/plat-zynq7k/platform_config.h
 +++ b/core/arch/arm/plat-zynq7k/platform_config.h
-@@ -44,6 +44,15 @@
+@@ -44,6 +44,19 @@
  #define SLCR_BASE			0xF8000000
  #define SLCR_LOCK			0xF8000004
  #define SLCR_UNLOCK			0xF8000008
@@ -67,10 +70,14 @@ index 41a48880f..a17edf9bc 100644
 +#define SLCR_TZ_FPGA_AFI     0xF8000488
 +#define APU_DBG_CTRL    0xF8007000
 +
++/* Secure AXI switch reader peripheral in PL (address from Vivado) */
++#define SECURE_SWITCH_BASE    0x43C00000
++#define SECURE_SWITCH_SIZE    0x00001000  /* 4KB */
++
  #define SLCR_TZ_DDR_RAM			0xF8000430
  #define SLCR_TZ_DMA_NS			0xF8000440
  #define SLCR_TZ_DMA_IRQ_NS		0xF8000444
-@@ -59,14 +68,16 @@
+@@ -59,14 +72,16 @@
  #define SECURITY2_SDIO0			0xE0200008
  #define SECURITY3_SDIO1			0xE020000C
  #define SECURITY4_QSPI			0xE0200010
@@ -90,7 +97,7 @@ index 41a48880f..a17edf9bc 100644
  
  /*
   * PL310 TAG RAM Control Register
-@@ -161,56 +172,6 @@
+@@ -161,56 +176,6 @@
  
  /* define the memory areas */
  
@@ -147,7 +154,7 @@ index 41a48880f..a17edf9bc 100644
  /*
   * TEE/TZ RAM layout:
   *
-@@ -228,17 +189,20 @@
+@@ -228,17 +193,20 @@
   *  TA_RAM  : all what is left (at least 2MByte !)
   */
  
@@ -172,7 +179,7 @@ index 41a48880f..a17edf9bc 100644
  
  #ifdef CFG_TEE_LOAD_ADDR
  #define TEE_LOAD_ADDR			CFG_TEE_LOAD_ADDR
-@@ -246,6 +210,5 @@
+@@ -246,6 +214,5 @@
  #define TEE_LOAD_ADDR			TEE_RAM_START
  #endif
  
