@@ -178,7 +178,7 @@ bootgen_optee: bootgen_bin
 
 optee:
 	@if [ ! -d optee_os ]; then git clone https://github.com/OP-TEE/optee_os.git ; fi
-	cd optee_os; git reset && git restore . && git clean -f && git apply ../patches/fix_zynq_support_in_optee.patch
+	cd optee_os; git reset && git restore . && git clean -f && git apply ../patches/fix_zynq_support_in_optee.patch && git apply ../patches/add_secure_switch_to_optee.patch
 	cd optee_os; make \
 		CFG_NS_ENTRY_ADDR=0x03000000 \
 		CFG_TEE_CORE_LOG_LEVEL=4 \
