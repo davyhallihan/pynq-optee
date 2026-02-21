@@ -12,6 +12,18 @@ export PATH
 
 FSBL_CC=arm-none-eabi-gcc
 
+# ---- Pinned dependency versions (commit SHAs) ----
+# Update these when upgrading dependencies or regenerating patches.
+EMBEDDEDSW_SHA    = 45a18907084e77bb3a450a035d280130d7ff6e26
+UBOOT_BRANCH      = xilinx-v2024.2
+DTC_SHA            = 7f3184a6c550bb8fb59e93c9901d75dced889dcf
+LINUX_SHA          = 7e47ae4ab22ed45a8326203c863f826423978f89
+OPTEE_CLIENT_SHA   = 9d6f69844ff60ec0966cf3659abcc38eda8b31ea
+OPTEE_EXAMPLES_SHA = ffddefd7b6edd5fe2b4991fc8a394b98a6276ffa
+BUSYBOX_SHA        = 8d7ae80eda7e08ee361f8793683ae58216caf720
+BOOTGEN_SHA        = 4f023ac2ca2ea452740194045fcecf1671f5b2c0
+OPTEE_OS_SHA       = e97a138aba3f477dee888d0978e25ab2b7d78819
+
 artifacts:
 	mkdir -p artifacts
 
@@ -31,7 +43,7 @@ gnu_toolchain:
 
 
 fsbl: artifacts
-	@if [ ! -d embeddedsw ]; then git clone https://github.com/Xilinx/embeddedsw.git; fi
+	@if [ ! -d embeddedsw ]; then git clone https://github.com/Xilinx/embeddedsw.git && cd embeddedsw && git checkout $(EMBEDDEDSW_SHA); fi
 	rm -rf embeddedsw/lib/sw_apps/zynq_fsbl/misc/zynq-pynqz1
 	rm -rf embeddedsw/lib/sw_apps/zynq_fsbl/misc/zynq-pynqz2
 	cd embeddedsw; git reset && git restore . && git clean -f && git apply ../patches/add-pynqz1-pynqz2-support-fsbl.patch 
@@ -44,7 +56,7 @@ fsbl_clean:
 	make -C embeddedsw/lib/sw_apps/zynq_fsbl/src clean
 
 uboot: artifacts gnu_toolchain
-	@if [ ! -d uboot_src ]; then git clone https://github.com/Xilinx/u-boot-xlnx.git uboot_src --branch xilinx-v2024.2; fi
+	@if [ ! -d uboot_src ]; then git clone https://github.com/Xilinx/u-boot-xlnx.git uboot_src --branch $(UBOOT_BRANCH); fi
 
 # patch u-boot to add support for pynq-z1 and pynq-z2
 	rm uboot_src/board/xilinx/zynq/zynq-pynqz2/ -rf
@@ -69,7 +81,7 @@ uboot_clean:
 	make -C uboot_src distclean SHELL=/bin/bash
 
 dtc: 
-	@if [ ! -d dtc ]; then git clone https://git.kernel.org/pub/scm/utils/dtc/dtc.git ; fi
+	@if [ ! -d dtc ]; then git clone https://git.kernel.org/pub/scm/utils/dtc/dtc.git && cd dtc && git checkout $(DTC_SHA); fi
 	if [ ! -e  dtc/builddir/dtc ]; then cd dtc && meson setup builddir && meson compile -C builddir ; fi
 
 dtb: dtc
@@ -89,7 +101,7 @@ dtb_clean:
 	rm artifacts/system.dtb
 
 kernel: artifacts gnu_toolchain
-	@if [ ! -d linux-xlnx ]; then git clone https://github.com/Xilinx/linux-xlnx.git ; fi
+	@if [ ! -d linux-xlnx ]; then git clone https://github.com/Xilinx/linux-xlnx.git && cd linux-xlnx && git checkout $(LINUX_SHA); fi
 
 # configure the kernel
 	cd linux-xlnx; git reset && git restore . && git clean -f
@@ -99,7 +111,7 @@ kernel: artifacts gnu_toolchain
 
 # linux kernel with patches to make booting from optee/TEE works
 kernel_tee: artifacts gnu_toolchain
-	@if [ ! -d linux-xlnx ]; then git clone https://github.com/Xilinx/linux-xlnx.git ; fi
+	@if [ ! -d linux-xlnx ]; then git clone https://github.com/Xilinx/linux-xlnx.git && cd linux-xlnx && git checkout $(LINUX_SHA); fi
 # Patch the kernel to enable TEE support
 	cd linux-xlnx; git reset && git restore . && git clean -f && git apply ../patches/enable_optee_support_for_zynq.patch
 	make -C linux-xlnx SHELL=/bin/bash ARCH=arm xilinx_zynq_defconfig
@@ -112,7 +124,7 @@ kernel_clean:
 	cd linux-xlnx && make SHELL=/bin/bash clean
 
 optee_client: gnu_toolchain
-	@if [ ! -d optee_client ]; then git clone https://github.com/OP-TEE/optee_client ; fi
+	@if [ ! -d optee_client ]; then git clone https://github.com/OP-TEE/optee_client && cd optee_client && git checkout $(OPTEE_CLIENT_SHA); fi
 	cd optee_client &&\
 	mkdir -p build &&\
 	cd build && cmake -DCMAKE_C_COMPILER=arm-none-linux-gnueabihf-gcc -DCMAKE_INSTALL_PREFIX=$(realpath artifacts/initramfs) .. &&\
@@ -120,7 +132,7 @@ optee_client: gnu_toolchain
 	make install 
 
 optee_examples:
-	@if [ ! -d optee_examples ]; then git clone https://github.com/linaro-swg/optee_examples.git ; fi
+	@if [ ! -d optee_examples ]; then git clone https://github.com/linaro-swg/optee_examples.git && cd optee_examples && git checkout $(OPTEE_EXAMPLES_SHA); fi
 	make -C optee_examples examples \
 						   CROSS_COMPILE=arm-none-linux-gnueabihf- \
 						   TEEC_EXPORT=$(realpath artifacts/initramfs) TA_DEV_KIT_DIR=$(realpath optee_os/out/arm/export-ta_arm32)
@@ -139,7 +151,7 @@ secure_switch: gnu_toolchain
 	cp secure_switch/ta/*.ta artifacts/initramfs/lib/optee_armtz/
 
 busybox: gnu_toolchain
-	@if [ ! -d busybox ]; then git clone git://busybox.net/busybox.git ; fi
+	@if [ ! -d busybox ]; then git clone https://git.busybox.net/busybox && cd busybox && git checkout $(BUSYBOX_SHA); fi
 	cp patches/busybox_simple_config busybox/configs/busybox_simple_defconfig
 	make -C busybox SHELL=/bin/bash ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) busybox_simple_defconfig
 	make -C busybox -j$(nproc) SHELL=/bin/bash ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE)
@@ -166,7 +178,7 @@ rootfs_optee:
 	./make_initramfs.sh
 
 bootgen_bin:
-	@if [ ! -f bootgen/bootgen ]; then git clone https://github.com/Xilinx/bootgen.git && cd bootgen && make CROSS_COMPILE=""; fi
+	@if [ ! -f bootgen/bootgen ]; then git clone https://github.com/Xilinx/bootgen.git && cd bootgen && git checkout $(BOOTGEN_SHA) && make CROSS_COMPILE=""; fi
 
 bootgen: bootgen_bin
 	cp device-tree/simple_pynqz2_wrapper.bit artifacts/bitstream.bit
@@ -177,7 +189,7 @@ bootgen_optee: bootgen_bin
 	./bootgen/bootgen -image optee_image.bif -o artifacts/BOOT-optee.bin -w
 
 optee:
-	@if [ ! -d optee_os ]; then git clone https://github.com/OP-TEE/optee_os.git ; fi
+	@if [ ! -d optee_os ]; then git clone https://github.com/OP-TEE/optee_os.git && cd optee_os && git checkout $(OPTEE_OS_SHA); fi
 	cd optee_os; git reset && git restore . && git clean -f && git apply ../patches/fix_zynq_support_in_optee.patch && git apply ../patches/add_secure_switch_to_optee.patch
 	cd optee_os; make \
 		CFG_NS_ENTRY_ADDR=0x03000000 \
