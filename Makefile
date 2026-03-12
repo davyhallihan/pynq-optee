@@ -144,11 +144,8 @@ optee_examples:
 secure_switch: gnu_toolchain
 	make -C secure_switch \
 		CROSS_COMPILE=arm-none-linux-gnueabihf- \
-		TEEC_EXPORT=$(realpath artifacts/initramfs) \
-		TA_DEV_KIT_DIR=$(realpath optee_os/out/arm/export-ta_arm32)
+		TEEC_EXPORT=$(realpath artifacts/initramfs)
 	cp secure_switch/host/optee_benchmark artifacts/initramfs/usr/bin/
-	mkdir -p artifacts/initramfs/lib/optee_armtz
-	cp secure_switch/ta/*.ta artifacts/initramfs/lib/optee_armtz/
 
 busybox: gnu_toolchain
 	@if [ ! -d busybox ]; then git clone https://git.busybox.net/busybox && cd busybox && git checkout $(BUSYBOX_SHA); fi

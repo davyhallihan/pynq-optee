@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: BSD-2-Clause
-/*
- * OP-TEE Benchmark Suite — Normal World Host Application
- *
- * Measures four latency components of trusted computing on Zynq SoCs:
- *
- *   1. smc_rtt       — Pure SMC round-trip (CMD_NOP), no work in secure world
- *   2. smc_s_axi_rtt — SMC + secure AXI read (CMD_AXI_READ), wall-clock
- *   3. s_axi_rtt     — Secure AXI read latency in cycles (from PTA PMCCNTR)
- *   4. ns_axi_rtt    — Non-secure AXI read via /dev/mem mmap (no SMC)
- *
- * Usage:
- *   optee_benchmark [--smc N] [--smc-axi N] [--ns-axi N] [--all N] [--csv]
- */
+//
+// optee_benchmark -- host-side benchmark for TrustZone overhead on Zynq SoCs
+//
+// Measures the cost of crossing the normal/secure world boundary by timing
+// OP-TEE invocations from Linux userspace. Also provides a non-secure
+// baseline by reading an FPGA peripheral directly through /dev/mem.
+//
+// Each benchmark mode can output either human-readable stats or raw CSV
+// for post-processing with matplotlib/pandas.
+//
+// Build:
+//   make -C host CROSS_COMPILE=arm-none-linux-gnueabihf- \
+//        TEEC_EXPORT=$(pwd)/artifacts/initramfs
+//
+// Run on target:
+//   optee_benchmark --smc 10000 --csv > smc.csv
+//   optee_benchmark --smc-axi 10000 --csv > smc_axi.csv
+//   optee_benchmark --ns-axi 10000 --csv > ns_axi.csv
 
 #include <err.h>
 #include <fcntl.h>
@@ -27,18 +32,21 @@
 #include <tee_client_api.h>
 #include <pta_benchmark.h>
 
-/* Non-secure switch peripheral address — set at compile time per board */
+// Physical address of the non-secure AXI switch peripheral in the FPGA.
+// This comes from Vivado's assign_bd_address output and differs per board.
+// Override at compile time: -DNS_SWITCH_ADDR=0xA0000000
 #ifndef NS_SWITCH_ADDR
-#define NS_SWITCH_ADDR 0x40000000  /* PYNQ-Z2 default; override with -DNS_SWITCH_ADDR=... */
+#define NS_SWITCH_ADDR 0x40000000  /* PYNQ-Z2 default */
 #endif
 
 #define NS_SWITCH_SIZE 0x1000
 
 static int csv_mode;
 
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                     */
-/* -------------------------------------------------------------------------- */
+
+// ============================================================================
+// Statistics helpers
+// ============================================================================
 
 static uint64_t timespec_to_ns(struct timespec *ts)
 {
@@ -72,6 +80,7 @@ static struct stats compute_stats_u64(const uint64_t *data, int n)
 	return s;
 }
 
+// Convenience wrapper: widens uint32_t array to uint64_t before computing
 static struct stats compute_stats_u32(const uint32_t *data, int n)
 {
 	uint64_t *tmp = malloc(n * sizeof(uint64_t));
@@ -86,17 +95,21 @@ static struct stats compute_stats_u32(const uint32_t *data, int n)
 	return s;
 }
 
-static void print_stats(const char *label, const char *unit, struct stats *s)
+static void print_stats(const char *unit, struct stats *s)
 {
-	(void)label;
 	printf("  avg: %.1f %s    stddev: %.1f %s\n", s->avg, unit, s->stddev, unit);
 	printf("  min: %lu %s     max: %lu %s\n",
 	       (unsigned long)s->min, unit, (unsigned long)s->max, unit);
 }
 
-/* -------------------------------------------------------------------------- */
-/* SMC Round-Trip (CMD_NOP)                                                    */
-/* -------------------------------------------------------------------------- */
+
+// ============================================================================
+// Benchmark: SMC round-trip (PTA_CMD_NOP)
+//
+// Measures the pure world-switch cost. The PTA does zero work in secure
+// world -- it just returns. So the time is entirely:
+//   Linux ioctl -> TEE driver -> SMC trap -> OP-TEE dispatch -> SMC return
+// ============================================================================
 
 static void bench_smc(TEEC_Session *sess, int n)
 {
@@ -129,15 +142,27 @@ static void bench_smc(TEEC_Session *sess, int n)
 	} else {
 		struct stats s = compute_stats_u64(rtt_ns, n);
 		printf("\n=== SMC Round-Trip (%d iterations) ===\n", n);
-		print_stats("smc_rtt", "ns", &s);
+		print_stats("ns", &s);
 	}
 
 	free(rtt_ns);
 }
 
-/* -------------------------------------------------------------------------- */
-/* SMC + Secure AXI Read (CMD_AXI_READ)                                        */
-/* -------------------------------------------------------------------------- */
+
+// ============================================================================
+// Benchmark: SMC + secure AXI read (PTA_CMD_AXI_READ)
+//
+// Same world-switch path as above, but the PTA also does a single MMIO
+// read of the secure-only FPGA peripheral (io_read32). The PTA uses the
+// ARM cycle counter (PMCCNTR) to report how many CPU cycles the read took,
+// giving us both wall-clock time (from Linux) and cycle-accurate time
+// (from the secure side).
+//
+// Returns three measurements per iteration:
+//   - wall-clock round-trip (ns, from clock_gettime)
+//   - AXI read cycles (PMCCNTR delta around just the io_read32)
+//   - total PTA cycles (PMCCNTR delta for the entire command handler)
+// ============================================================================
 
 static void bench_smc_axi(TEEC_Session *sess, int n)
 {
@@ -181,11 +206,11 @@ static void bench_smc_axi(TEEC_Session *sess, int n)
 
 		printf("\n=== SMC + Secure AXI Read (%d iterations) ===\n", n);
 		printf("Wall-clock RTT:\n");
-		print_stats("smc_s_axi_rtt", "ns", &s_rtt);
+		print_stats("ns", &s_rtt);
 		printf("Secure AXI cycles (PMCCNTR delta around io_read32):\n");
-		print_stats("s_axi_cyc", "cyc", &s_axi);
+		print_stats("cyc", &s_axi);
 		printf("Total PTA cycles (entry to exit):\n");
-		print_stats("ta_total_cyc", "cyc", &s_ta);
+		print_stats("cyc", &s_ta);
 	}
 
 	free(rtt_ns);
@@ -193,9 +218,17 @@ static void bench_smc_axi(TEEC_Session *sess, int n)
 	free(ta_cyc);
 }
 
-/* -------------------------------------------------------------------------- */
-/* Non-Secure AXI Read (via /dev/mem mmap)                                     */
-/* -------------------------------------------------------------------------- */
+
+// ============================================================================
+// Benchmark: Non-secure AXI read (via /dev/mem, no SMC)
+//
+// Reads the non-secure FPGA peripheral directly from Linux userspace by
+// mmap'ing /dev/mem. No OP-TEE, no SMC, no world switch. This is the
+// baseline: the raw cost of a CPU-initiated AXI read through the PS-PL
+// bridge, as seen from userspace.
+//
+// Requires CONFIG_STRICT_DEVMEM=n in the kernel config.
+// ============================================================================
 
 static void bench_ns_axi(int n)
 {
@@ -234,15 +267,19 @@ static void bench_ns_axi(int n)
 	} else {
 		struct stats s = compute_stats_u64(rtt_ns, n);
 		printf("\n=== Non-Secure AXI Read (%d iterations) ===\n", n);
-		print_stats("ns_axi_rtt", "ns", &s);
+		print_stats("ns", &s);
 	}
 
 	free(rtt_ns);
 }
 
-/* -------------------------------------------------------------------------- */
-/* SMC Throughput (batch CMD_NOP)                                               */
-/* -------------------------------------------------------------------------- */
+
+// ============================================================================
+// Benchmark: SMC throughput (batch PTA_CMD_NOP)
+//
+// Fires N back-to-back NOPs with a single timer around the whole batch.
+// Gives aggregate throughput (SMCs/sec) rather than per-call latency.
+// ============================================================================
 
 static void bench_throughput(TEEC_Session *sess, int n)
 {
@@ -281,9 +318,13 @@ static void bench_throughput(TEEC_Session *sess, int n)
 	}
 }
 
-/* -------------------------------------------------------------------------- */
-/* Session Open/Close Timing                                                   */
-/* -------------------------------------------------------------------------- */
+
+// ============================================================================
+// Benchmark: TEE session open/close
+//
+// Measures the cost of establishing and tearing down an OP-TEE session.
+// Each iteration opens a fresh session to the PTA and immediately closes it.
+// ============================================================================
 
 static void bench_session(TEEC_Context *ctx, int n)
 {
@@ -327,18 +368,24 @@ static void bench_session(TEEC_Context *ctx, int n)
 
 		printf("\n=== Session Open/Close (%d iterations) ===\n", n);
 		printf("OpenSession:\n");
-		print_stats("open", "ns", &s_open);
+		print_stats("ns", &s_open);
 		printf("CloseSession:\n");
-		print_stats("close", "ns", &s_close);
+		print_stats("ns", &s_close);
 	}
 
 	free(open_ns);
 	free(close_ns);
 }
 
-/* -------------------------------------------------------------------------- */
-/* Multi-Read Sweep (CMD_AXI_READ_N with varying N)                            */
-/* -------------------------------------------------------------------------- */
+
+// ============================================================================
+// Benchmark: Multi-read sweep (PTA_CMD_AXI_READ_N)
+//
+// Calls the PTA with varying numbers of io_read32() per invocation
+// (1, 2, 4, 8, 16). By fitting a line through cycles-vs-num_reads, we
+// extract the marginal cost of a single AXI read in cycles, separated
+// from the fixed overhead of the SMC + PTA dispatch.
+// ============================================================================
 
 static void bench_multi_read(TEEC_Session *sess, int iterations)
 {
@@ -397,9 +444,10 @@ static void bench_multi_read(TEEC_Session *sess, int iterations)
 	free(cyc);
 }
 
-/* -------------------------------------------------------------------------- */
-/* Usage / Main                                                                */
-/* -------------------------------------------------------------------------- */
+
+// ============================================================================
+// CLI
+// ============================================================================
 
 static void usage(const char *prog)
 {
@@ -475,6 +523,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	// Any benchmark that talks to OP-TEE needs a TEE context
 	need_tee = do_smc || do_smc_axi || do_throughput ||
 		   do_session || do_multi_read;
 
@@ -484,11 +533,11 @@ int main(int argc, char *argv[])
 			errx(1, "TEEC_InitializeContext failed: 0x%x", res);
 	}
 
-	/* Session benchmark opens/closes its own sessions */
+	// Session benchmark manages its own sessions (open/close is what it measures)
 	if (do_session)
 		bench_session(&ctx, n_session);
 
-	/* Open a persistent session for the remaining TEE benchmarks */
+	// Open one persistent session for all other TEE benchmarks
 	if (do_smc || do_smc_axi || do_throughput || do_multi_read) {
 		res = TEEC_OpenSession(&ctx, &sess, &uuid,
 				       TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
@@ -510,17 +559,16 @@ int main(int argc, char *argv[])
 	if (do_multi_read)
 		bench_multi_read(&sess, n_multi_read);
 
-	if (sess_open) {
+	if (sess_open)
 		TEEC_CloseSession(&sess);
-	}
 
 	if (need_tee)
 		TEEC_FinalizeContext(&ctx);
 
+	// ns-axi doesn't need OP-TEE at all -- it goes straight through /dev/mem
 	if (do_ns_axi)
 		bench_ns_axi(n_ns_axi);
 
-	/* Print derived metrics when running all core benchmarks in text mode */
 	if (do_smc && do_smc_axi && do_ns_axi && !csv_mode) {
 		printf("\n=== Derived ===\n");
 		printf("  s_axi_cost = smc_s_axi_rtt - smc_rtt  (security + AXI cost beyond SMC)\n");
