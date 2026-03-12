@@ -3,14 +3,29 @@
 # Batch-mode Vivado script to create a Zynq block design with a TrustZone-
 # secured AXI switch reader peripheral for the PYNQ-Z2 board.
 #
-# Usage (from Windows cmd/PowerShell):
-#   cd <project-root>/vivado
-#   C:\Xilinx\Vivado\2024.2\bin\vivado.bat -mode batch -source create_secure_switch_design.tcl
+# Usage:
+#   vivado -mode batch -source create_secure_switch_design.tcl
+#
+# To toggle TrustZone enforcement on the AXI interconnect:
+#   vivado -mode batch -source create_secure_switch_design.tcl -tclargs secure
+#   vivado -mode batch -source create_secure_switch_design.tcl -tclargs nosecure
+#
+# Boot 1 (secure):   run --smc and --smc-axi   (M00_SECURE=1 blocks non-secure)
+# Boot 2 (nosecure): run --ns-axi              (M00_SECURE off, all access allowed)
 #
 # Outputs:
 #   output/hardware_design.xsa   — Hardware platform (XSA) with bitstream
 #   output/bitstream.bit         — Standalone bitstream copy
 # ============================================================================
+
+# --- Toggle: "secure" or "nosecure" (default: nosecure) ---
+if {[llength $argv] > 0 && [lindex $argv 0] eq "secure"} {
+    set ENABLE_M00_SECURE 1
+    puts "*** BUILD MODE: SECURE (M00_SECURE=1) — non-secure AXI will be blocked ***"
+} else {
+    set ENABLE_M00_SECURE 0
+    puts "*** BUILD MODE: NOSECURE (M00_SECURE off) — all AXI access allowed ***"
+}
 
 set script_dir [file dirname [file normalize [info script]]]
 set proj_dir   [file join $script_dir "vivado_project"]
@@ -85,9 +100,12 @@ set_property -dict [list \
 # Add our secure switch reader as an RTL module reference
 create_bd_cell -type module -reference secure_switch_axi secure_switch_0
 
-# Create AXI Interconnect to bridge PS GP0 to our peripheral
+# Add a second (non-secure) instance of the same peripheral
+create_bd_cell -type module -reference secure_switch_axi ns_switch_0
+
+# Create AXI Interconnect to bridge PS GP0 to both peripherals
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 axi_interconnect_0
-set_property CONFIG.NUM_MI {1} [get_bd_cells axi_interconnect_0]
+set_property CONFIG.NUM_MI {2} [get_bd_cells axi_interconnect_0]
 
 # ----------------------------------------------------------------------------
 # 4. Connect everything
@@ -99,21 +117,37 @@ connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins ps7/M_AXI_GP0_ACLK]
 connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins axi_interconnect_0/ACLK]
 connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins axi_interconnect_0/S00_ACLK]
 connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins axi_interconnect_0/M00_ACLK]
+connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins axi_interconnect_0/M01_ACLK]
 connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins secure_switch_0/s_axi_aclk]
+connect_bd_net [get_bd_pins ps7/FCLK_CLK0] [get_bd_pins ns_switch_0/s_axi_aclk]
 
 # Reset: PS FCLK_RESET0_N
 connect_bd_net [get_bd_pins ps7/FCLK_RESET0_N] [get_bd_pins axi_interconnect_0/ARESETN]
 connect_bd_net [get_bd_pins ps7/FCLK_RESET0_N] [get_bd_pins axi_interconnect_0/S00_ARESETN]
 connect_bd_net [get_bd_pins ps7/FCLK_RESET0_N] [get_bd_pins axi_interconnect_0/M00_ARESETN]
+connect_bd_net [get_bd_pins ps7/FCLK_RESET0_N] [get_bd_pins axi_interconnect_0/M01_ARESETN]
 connect_bd_net [get_bd_pins ps7/FCLK_RESET0_N] [get_bd_pins secure_switch_0/s_axi_aresetn]
+connect_bd_net [get_bd_pins ps7/FCLK_RESET0_N] [get_bd_pins ns_switch_0/s_axi_aresetn]
 
-# AXI bus: PS GP0 → Interconnect → Switch reader
+# AXI bus: PS GP0 → Interconnect → Switch readers
 connect_bd_intf_net [get_bd_intf_pins ps7/M_AXI_GP0] [get_bd_intf_pins axi_interconnect_0/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_interconnect_0/M00_AXI] [get_bd_intf_pins secure_switch_0/s_axi]
+connect_bd_intf_net [get_bd_intf_pins axi_interconnect_0/M01_AXI] [get_bd_intf_pins ns_switch_0/s_axi]
 
-# Make switches external
+# TrustZone: Optionally mark M00 (secure_switch_0) as secure.
+# WARNING: On Zynq-7000, M00_SECURE=1 blocks ALL non-secure AXI transactions
+# (even to M01), so --ns-axi won't work. Build two bitstreams:
+#   "secure"   → M00_SECURE=1 for --smc / --smc-axi measurements
+#   "nosecure" → M00_SECURE=0 for --ns-axi measurements
+if {$ENABLE_M00_SECURE} {
+    set_property CONFIG.M00_SECURE {1} [get_bd_cells axi_interconnect_0]
+    puts "INFO: M00_SECURE=1 set on axi_interconnect_0"
+}
+
+# Make switches external — both instances share the same physical switches
 create_bd_port -dir I -from 1 -to 0 sw
 connect_bd_net [get_bd_ports sw] [get_bd_pins secure_switch_0/sw]
+connect_bd_net [get_bd_ports sw] [get_bd_pins ns_switch_0/sw]
 
 # Connect PS DDR and FIXED_IO
 apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 \
@@ -125,16 +159,19 @@ apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 \
 puts "=== Assigning addresses ==="
 assign_bd_address
 
-# Print the assigned address so the user can use it in OP-TEE
-set addr_segs [get_bd_addr_segs -of_objects [get_bd_intf_pins secure_switch_0/s_axi]]
-foreach seg $addr_segs {
-    set offset [get_property OFFSET $seg]
-    set range  [get_property RANGE $seg]
-    puts "=============================================="
-    puts "  PERIPHERAL ADDRESS: $offset  RANGE: $range"
-    puts "  Use this address in OP-TEE platform_config.h"
-    puts "=============================================="
+# Print the assigned addresses so the user can use them in OP-TEE / host app
+puts "=============================================="
+foreach {inst label} {secure_switch_0 "SECURE" ns_switch_0 "NON-SECURE"} {
+    set addr_segs [get_bd_addr_segs -of_objects [get_bd_intf_pins ${inst}/s_axi]]
+    foreach seg $addr_segs {
+        set offset [get_property OFFSET $seg]
+        set range  [get_property RANGE $seg]
+        puts "  $label PERIPHERAL ($inst): $offset  RANGE: $range"
+    }
 }
+puts "  Use secure address in OP-TEE CFG_SWITCH_BASE"
+puts "  Use non-secure address in host app NS_SWITCH_ADDR"
+puts "=============================================="
 
 # ----------------------------------------------------------------------------
 # 6. Validate and save

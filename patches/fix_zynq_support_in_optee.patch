@@ -71,7 +71,7 @@ index 41a48880f..e2fcc8cf7 100644
 +#define APU_DBG_CTRL    0xF8007000
 +
 +/* Secure AXI switch reader peripheral in PL (address from Vivado) */
-+#define SECURE_SWITCH_BASE    0x43C00000
++#define SECURE_SWITCH_BASE    0x40001000
 +#define SECURE_SWITCH_SIZE    0x00001000  /* 4KB */
 +
  #define SLCR_TZ_DDR_RAM			0xF8000430

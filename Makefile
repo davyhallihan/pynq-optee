@@ -146,7 +146,7 @@ secure_switch: gnu_toolchain
 		CROSS_COMPILE=arm-none-linux-gnueabihf- \
 		TEEC_EXPORT=$(realpath artifacts/initramfs) \
 		TA_DEV_KIT_DIR=$(realpath optee_os/out/arm/export-ta_arm32)
-	cp secure_switch/host/optee_benchmark_switch artifacts/initramfs/usr/bin/
+	cp secure_switch/host/optee_benchmark artifacts/initramfs/usr/bin/
 	mkdir -p artifacts/initramfs/lib/optee_armtz
 	cp secure_switch/ta/*.ta artifacts/initramfs/lib/optee_armtz/
 
@@ -191,6 +191,11 @@ bootgen_optee: bootgen_bin
 optee:
 	@if [ ! -d optee_os ]; then git clone https://github.com/OP-TEE/optee_os.git && cd optee_os && git checkout $(OPTEE_OS_SHA); fi
 	cd optee_os; git reset && git restore . && git clean -f && git apply ../patches/fix_zynq_support_in_optee.patch
+# Install PTA benchmark into OP-TEE core
+	cp secure_switch/pta/pta_benchmark.c optee_os/core/pta/pta_benchmark.c
+	@if ! grep -q pta_benchmark optee_os/core/pta/sub.mk; then \
+		printf '\nsrcs-$$(CFG_BENCHMARK_PTA) += pta_benchmark.c\n' >> optee_os/core/pta/sub.mk; \
+	fi
 	cd optee_os; make \
 		CFG_NS_ENTRY_ADDR=0x03000000 \
 		CFG_TEE_CORE_LOG_LEVEL=4 \
@@ -199,7 +204,9 @@ optee:
 		O=out/arm \
 		CFG_DT=y \
 		CFG_CORE_DEBUG=y\
-		PLATFORM=zynq7k
+		PLATFORM=zynq7k \
+		CFG_BENCHMARK_PTA=y \
+		CFG_SWITCH_BASE=0x40001000
 
 	cp optee_os/out/arm/core/tee-raw.bin artifacts
 	cp optee_os/out/arm/core/tee.elf artifacts

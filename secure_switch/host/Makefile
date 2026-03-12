@@ -9,9 +9,9 @@ READELF ?= $(CROSS_COMPILE)readelf
 OBJS = main.o
 
 CFLAGS += -Wall -I../ta/include -I$(TEEC_EXPORT)/include -I./include
-LDADD += -lteec -L$(TEEC_EXPORT)/lib
+LDADD += -lteec -lm -L$(TEEC_EXPORT)/lib
 
-BINARY = optee_benchmark_switch
+BINARY = optee_benchmark
 
 .PHONY: all
 all: $(BINARY)

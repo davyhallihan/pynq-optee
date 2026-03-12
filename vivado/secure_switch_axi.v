@@ -1,7 +1,9 @@
 // secure_switch_axi.v
-// AXI4-Lite slave that exposes PYNQ-Z2 slide switch states as a read-only register.
+// AXI4-Lite slave that exposes slide switch states as a read-only register.
 // Register 0 (offset 0x00): bits [1:0] = sw[1:0], bits [31:2] = 0
 // All writes are ignored.
+//
+// Board-agnostic — works on both PYNQ-Z2 (Zynq-7000) and AUP-ZU3 (ZU+).
 
 `timescale 1ns / 1ps
 
