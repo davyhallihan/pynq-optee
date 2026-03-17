@@ -14,7 +14,7 @@ OBJCOPY ?= $(CROSS_COMPILE)objcopy
 OBJDUMP ?= $(CROSS_COMPILE)objdump
 READELF ?= $(CROSS_COMPILE)readelf
 
-OBJS = main.o
+OBJS = main.o stats.o bench_smc.o bench_axi.o
 
 CFLAGS += -Wall -I../include -I$(TEEC_EXPORT)/include -I./include
 LDADD += -lteec -lm -L$(TEEC_EXPORT)/lib
@@ -25,7 +25,7 @@ BINARY = optee_benchmark
 all: $(BINARY)
 
 $(BINARY): $(OBJS)
-	$(CC) $(LDFLAGS) -o $@ $< $(LDADD)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LDADD)
 
 .PHONY: clean
 clean:
