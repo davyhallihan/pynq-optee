@@ -10,7 +10,8 @@ ROOTFS_DIR=artifacts/initramfs
 VIVADO ?= /tools/xilinx/2025.2/Vivado/bin/vivado
 
 # add xsct and arm-none-linux-gnueabihf-* to PATH
-PATH := $(PATH):$(realpath xsct/Vitis/2024.2/bin):$(realpath gnu/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-linux-gnueabihf/bin)
+# Use abspath (not realpath) so the path is added even before the directory is downloaded
+PATH := $(PATH):$(abspath xsct/Vitis/2024.2/bin):$(abspath gnu/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-linux-gnueabihf/bin)
 export PATH
 
 FSBL_CC=arm-none-eabi-gcc
