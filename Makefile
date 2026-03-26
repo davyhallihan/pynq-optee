@@ -6,6 +6,9 @@ export CROSS_COMPILE ARCH DEVICE_TREE
 
 ROOTFS_DIR=artifacts/initramfs
 
+# Vivado (for bitstream generation)
+VIVADO ?= /tools/xilinx/2025.2/Vivado/bin/vivado
+
 # add xsct and arm-none-linux-gnueabihf-* to PATH
 PATH := $(PATH):$(realpath xsct/Vitis/2024.2/bin):$(realpath gnu/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-linux-gnueabihf/bin)
 export PATH
@@ -41,6 +44,14 @@ gnu_toolchain:
 		tar xvf /tmp/gnu.tar.xz -C ./gnu; \
 	fi
 
+
+bitstream_secure:
+	$(VIVADO) -mode batch -source vivado/create_secure_switch_design.tcl -tclargs secure
+	cp vivado/output/bitstream.bit device-tree/simple_pynqz2_wrapper.bit
+
+bitstream_nosecure:
+	$(VIVADO) -mode batch -source vivado/create_secure_switch_design.tcl -tclargs nosecure
+	cp vivado/output/bitstream.bit device-tree/simple_pynqz2_wrapper.bit
 
 fsbl: artifacts
 	@if [ ! -d embeddedsw ]; then git clone https://github.com/Xilinx/embeddedsw.git && cd embeddedsw && git checkout $(EMBEDDEDSW_SHA); fi
@@ -178,10 +189,21 @@ bootgen_bin:
 	@if [ ! -f bootgen/bootgen ]; then git clone https://github.com/Xilinx/bootgen.git && cd bootgen && git checkout $(BOOTGEN_SHA) && make CROSS_COMPILE=""; fi
 
 bootgen: bootgen_bin
+	@if [ ! -f device-tree/simple_pynqz2_wrapper.bit ]; then \
+		echo "ERROR: device-tree/simple_pynqz2_wrapper.bit not found."; \
+		echo "  Run 'make bitstream_secure' or 'make bitstream_nosecure' first."; \
+		exit 1; \
+	fi
 	cp device-tree/simple_pynqz2_wrapper.bit artifacts/bitstream.bit
 	./bootgen/bootgen -image image.bif -o artifacts/BOOT.bin -w
 
 bootgen_optee: bootgen_bin
+	@if [ ! -f device-tree/simple_pynqz2_wrapper.bit ]; then \
+		echo "ERROR: device-tree/simple_pynqz2_wrapper.bit not found."; \
+		echo "  Run 'make bitstream_secure' (for optee_image) or"; \
+		echo "  'make bitstream_nosecure' (for simple_image) first."; \
+		exit 1; \
+	fi
 	cp device-tree/simple_pynqz2_wrapper.bit artifacts/bitstream.bit
 	./bootgen/bootgen -image optee_image.bif -o artifacts/BOOT-optee.bin -w
 
@@ -218,16 +240,13 @@ boot_src:
 boot_tee_src:
 	uboot_src/tools/mkimage -A arm -T script -C none -d boot_tee.txt artifacts/boot_tee.scr
 
-# non-secure development image:
+# non-secure development image (needs nosecure bitstream):
 simple_image: fsbl uboot boot_src dtb kernel rootfs bootgen
 
-# trust-zone enabled image:
+# trust-zone enabled image (needs secure bitstream):
 optee_image: fsbl uboot boot_tee_src optee dtb_optee kernel_tee rootfs_optee bootgen_optee
-
-# trust-zone enabled image with secure-boot:
-# optee_image_secure:
 
 clean: fsbl_clean uboot_clean kernel_clean dtb_clean optee_clean
 	rm -rf artifacts
-	
-.PHONY: fsbl fsbl_clean uboot uboot_clean kernel kernel_clean rootfs bootgen clean ub_image dtb dtb_optee dtc optee_image kernel_tee boot_src boot_tee_src simple_image optee_client busybox optee_examples secure_switch glibc gnu_toolchain rootfs_optee optee_clean bootgen_bin
+
+.PHONY: fsbl fsbl_clean uboot uboot_clean kernel kernel_clean rootfs bootgen clean ub_image dtb dtb_optee dtc optee_image kernel_tee boot_src boot_tee_src simple_image optee_client busybox optee_examples secure_switch glibc gnu_toolchain rootfs_optee optee_clean bootgen_bin bitstream_secure bitstream_nosecure
