@@ -2,17 +2,6 @@
 //
 // optee_benchmark -- host-side benchmark for TrustZone overhead on Zynq SoCs
 //
-// Measures the cost of crossing the normal/secure world boundary by timing
-// OP-TEE invocations from Linux userspace. Also provides a non-secure
-// baseline by reading an FPGA peripheral directly through /dev/mem.
-//
-// Each benchmark mode can output either human-readable stats or raw CSV
-// for post-processing with matplotlib/pandas.
-//
-// Build:
-//   make -C host CROSS_COMPILE=arm-none-linux-gnueabihf- \
-//        TEEC_EXPORT=$(pwd)/artifacts/initramfs
-//
 // Run on target:
 //   optee_benchmark --smc 10000 --csv > smc.csv
 //   optee_benchmark --smc-axi 10000 --csv > smc_axi.csv
@@ -27,22 +16,15 @@ static void usage(const char *prog)
 	fprintf(stderr,
 		"Usage: %s [OPTIONS]\n"
 		"\n"
-		"Core benchmarks:\n"
+		"Benchmarks:\n"
 		"  --smc N          Pure SMC round-trip (CMD_NOP), N iterations\n"
 		"  --smc-axi N      SMC + secure AXI read (CMD_AXI_READ), N iterations\n"
 		"  --ns-axi N       Non-secure AXI read via /dev/mem, N iterations\n"
-		"  --all N          Run all three core benchmarks with N iterations\n"
-		"\n"
-		"Extra benchmarks:\n"
-		"  --throughput N   Back-to-back CMD_NOP, one timer around all N calls\n"
-		"  --session N      Open/close TEE session N times, report stats\n"
-		"  --multi-read N   Sweep 1,2,4,8,16 reads per SMC, N iterations each\n"
+		"  --all N          Run all three benchmarks with N iterations\n"
 		"\n"
 		"Output:\n"
-		"  --csv            Raw per-iteration CSV data (redirect to file)\n"
-		"\n"
-		"NS switch address: 0x%lx (compile-time, -DNS_SWITCH_ADDR=0x...)\n",
-		prog, (unsigned long)NS_SWITCH_ADDR);
+		"  --csv            Raw per-iteration CSV data (redirect to file)\n",
+		prog);
 }
 
 int main(int argc, char *argv[])
@@ -53,10 +35,8 @@ int main(int argc, char *argv[])
 	TEEC_UUID uuid = PTA_BENCHMARK_UUID;
 	uint32_t err_origin;
 	int do_smc = 0, do_smc_axi = 0, do_ns_axi = 0;
-	int do_throughput = 0, do_session = 0, do_multi_read = 0;
 	int n_smc = 0, n_smc_axi = 0, n_ns_axi = 0;
-	int n_throughput = 0, n_session = 0, n_multi_read = 0;
-	int need_tee = 0, sess_open = 0;
+	int need_tee, sess_open = 0;
 	int i;
 
 	for (i = 1; i < argc; i++) {
@@ -71,15 +51,6 @@ int main(int argc, char *argv[])
 		} else if (strcmp(argv[i], "--ns-axi") == 0 && i + 1 < argc) {
 			do_ns_axi = 1;
 			n_ns_axi = atoi(argv[++i]);
-		} else if (strcmp(argv[i], "--throughput") == 0 && i + 1 < argc) {
-			do_throughput = 1;
-			n_throughput = atoi(argv[++i]);
-		} else if (strcmp(argv[i], "--session") == 0 && i + 1 < argc) {
-			do_session = 1;
-			n_session = atoi(argv[++i]);
-		} else if (strcmp(argv[i], "--multi-read") == 0 && i + 1 < argc) {
-			do_multi_read = 1;
-			n_multi_read = atoi(argv[++i]);
 		} else if (strcmp(argv[i], "--all") == 0 && i + 1 < argc) {
 			int n = atoi(argv[++i]);
 			do_smc = do_smc_axi = do_ns_axi = 1;
@@ -90,28 +61,18 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (!do_smc && !do_smc_axi && !do_ns_axi &&
-	    !do_throughput && !do_session && !do_multi_read) {
+	if (!do_smc && !do_smc_axi && !do_ns_axi) {
 		usage(argv[0]);
 		return 1;
 	}
 
-	// Any benchmark that talks to OP-TEE needs a TEE context
-	need_tee = do_smc || do_smc_axi || do_throughput ||
-		   do_session || do_multi_read;
+	need_tee = do_smc || do_smc_axi;
 
 	if (need_tee) {
 		res = TEEC_InitializeContext(NULL, &ctx);
 		if (res != TEEC_SUCCESS)
 			errx(1, "TEEC_InitializeContext failed: 0x%x", res);
-	}
 
-	// Session benchmark manages its own sessions (open/close is what it measures)
-	if (do_session)
-		bench_session(&ctx, n_session);
-
-	// Open one persistent session for all other TEE benchmarks
-	if (do_smc || do_smc_axi || do_throughput || do_multi_read) {
 		res = TEEC_OpenSession(&ctx, &sess, &uuid,
 				       TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
 		if (res != TEEC_SUCCESS)
@@ -122,32 +83,16 @@ int main(int argc, char *argv[])
 
 	if (do_smc)
 		bench_smc(&sess, n_smc);
-
-	if (do_throughput)
-		bench_throughput(&sess, n_throughput);
-
 	if (do_smc_axi)
 		bench_smc_axi(&sess, n_smc_axi);
 
-	if (do_multi_read)
-		bench_multi_read(&sess, n_multi_read);
-
 	if (sess_open)
 		TEEC_CloseSession(&sess);
-
 	if (need_tee)
 		TEEC_FinalizeContext(&ctx);
 
-	// ns-axi doesn't need OP-TEE at all -- it goes straight through /dev/mem
 	if (do_ns_axi)
 		bench_ns_axi(n_ns_axi);
-
-	if (do_smc && do_smc_axi && do_ns_axi && !csv_mode) {
-		printf("\n=== Derived ===\n");
-		printf("  s_axi_cost = smc_s_axi_rtt - smc_rtt  (security + AXI cost beyond SMC)\n");
-		printf("  SMC overhead = smc_rtt (pure context switch cost)\n");
-		printf("  security_overhead = s_axi_rtt - ns_axi_rtt (TrustZone protection cost)\n");
-	}
 
 	return 0;
 }
