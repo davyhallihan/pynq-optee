@@ -1,5 +1,6 @@
 CONFIG_TEE=y
 CONFIG_HAVE_ARM_SMCCC=y
 CONFIG_OPTEE=y
-# No for now
 CONFIG_RTC_DRV_OPTEE=n
+# Allow /dev/mem access to MMIO regions (needed for --ns-axi benchmark)
+CONFIG_STRICT_DEVMEM=n
