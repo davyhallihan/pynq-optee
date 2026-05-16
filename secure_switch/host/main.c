@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: BSD-2-Clause
-//
 // optee_benchmark -- host-side benchmark for TrustZone overhead on Zynq SoCs
 //
 // Run on target:
