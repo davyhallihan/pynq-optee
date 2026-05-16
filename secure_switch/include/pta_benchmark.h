@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: BSD-2-Clause
-//
 // Shared header between the PTA (secure world) and the host app (Linux).
 // Both sides include this to agree on the UUID and command IDs.
 
