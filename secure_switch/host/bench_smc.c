@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: BSD-2-Clause
 // Benchmark: pure SMC round-trip (no AXI reads)
 
 #include "benchmark.h"
