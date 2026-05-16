@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: BSD-2-Clause
 // Statistics computation and printing helpers
 
 #include "benchmark.h"
