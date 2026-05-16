@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: BSD-2-Clause
 #ifndef BENCHMARK_H
 #define BENCHMARK_H
 
