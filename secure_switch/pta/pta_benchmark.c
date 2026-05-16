@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: BSD-2-Clause
-//
 // pta_benchmark.c -- Pseudo Trusted Application for Cortex-A9 (AArch32)
 //
 // This PTA runs inside the OP-TEE kernel (not as a userspace TA) so it
