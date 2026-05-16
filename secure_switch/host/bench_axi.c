@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: BSD-2-Clause
 // Benchmarks involving AXI peripheral reads (secure and non-secure)
 
 #include "benchmark.h"
